@@ -1,61 +1,35 @@
-const path = require("path");
-const express = require("express");
-const cors = require("cors");
-const morgan = require("morgan");
-const { init: initDB, Counter } = require("./db");
+const net = require( 'net' );
+const port = 3000;
+const hostname = '127.0.0.1';
 
-const logger = morgan("tiny");
+// 定义两个变量， 一个用来计数，一个用来保存客户端
+let clients = {};
+let clientName = 0;
 
-const app = express();
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
-app.use(cors());
-app.use(logger);
+// 创建服务器
+const server = new net.createServer();
 
-// 首页
-app.get("/", async (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
+server.on('connection', (client) => {
+  client.name = ++clientName; // 给每一个client起个名
+  clients[client.name] = client; // 将client保存在clients
 
-// 更新计数
-app.post("/api/count", async (req, res) => {
-  const { action } = req.body;
-  if (action === "inc") {
-    await Counter.create();
-  } else if (action === "clear") {
-    await Counter.destroy({
-      truncate: true,
-    });
-  }
-  res.send({
-    code: 0,
-    data: await Counter.count(),
+  client.on('data', function (msg) { //接收client发来的信息
+    console.log(`客户端${client.name}发来一个信息：${msg}`);
+    client.write("{type:1}");
   });
-});
 
-// 获取计数
-app.get("/api/count", async (req, res) => {
-  const result = await Counter.count();
-  res.send({
-    code: 0,
-    data: result,
+  client.on('error', function (e) { //监听客户端异常
+    console.log('client error' + e);
+    client.end();
   });
-});
 
-// 小程序调用，获取微信 Open ID
-app.get("/api/wx_openid", async (req, res) => {
-  if (req.headers["x-wx-source"]) {
-    res.send(req.headers["x-wx-openid"]);
-  }
-});
-
-const port = process.env.PORT || 80;
-
-async function bootstrap() {
-  await initDB();
-  app.listen(port, () => {
-    console.log("启动成功", port);
+  client.on( 'close', function () {
+    delete clients[client.name];
+    console.log(`客户端${ client.name }下线了`);
   });
-}
 
-bootstrap();
+});
+
+server.listen( port,hostname,function () {
+  console.log(`服务器运行在：http://${hostname}:${port}`);
+});
